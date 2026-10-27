@@ -14,19 +14,23 @@
 
 生效有两个条件：
 
-1. 部署时把数据目录下的 `assets/` 以 `/assets/` 对外提供静态文件。nginx 示例：
+1. 部署时只把「带扩展名的哈希文件」暴露到 `/assets/` 下。不要把整个 `/assets/` 前缀拿去做静态目录——应用自己用 `/assets/<id>`（无扩展名）给管理页面返回预览图，前缀一拦，网页版会全部变空白。nginx 示例：
 
 ```nginx
-location ^~ /assets/ {
-    alias /path/to/sticker-data/assets/;
+location ~* "^/assets/[0-9a-f]{64}\\.(png|jpe?g|webp|gif)$" {
+    root /path/to/sticker-data;   # 实际文件是 <root>/assets/<sha256>.<ext>
     expires 7d;
     add_header Cache-Control "public";
 }
 ```
 
+正则两边的引号不能省：nginx 会把不带引号的 `{64}` 当成配置块起始，报 `unknown directive`。其余路径仍由 `location /` 转给服务。
+
 2. 启动参数 `--public-url` 要写成这个站点的公网根地址，例如 `https://sticker.example.com`。`public_url` 就是 `{public-url}/assets/{sha256}{ext}`，图片按内容哈希命名，新导入的图自动拥有地址。
 
 `--public-url` 不是 `http(s)` 时，该字段返回空字符串，未改动的宿主可以忽略它。设 `include_image=false` 时只返回元数据与 `public_url`，适合只想嵌入小图、不想付视觉费用的场景。
+
+自检：拿一张图库里已有的哈希，`curl -I https://你的域名/assets/<sha256>.jpg` 应该返回 200 和正确的 `Content-Type`；同时打开管理页面确认预览图正常，两条都过才算配对。
 
 注意：`/assets/` 是公开静态目录，谁拿到地址都能打开，别往这个图库里放不适合公开的图。
 
@@ -124,7 +128,7 @@ For a standard MCP client, configure `mcpServers` with `command: "/absolute/path
 
 ### Fork addition: public_url
 
-This fork adds a `public_url` field to `express` and `sticker_library` (`get`) responses. When the deployment serves the data directory's `assets/` folder at `/assets/` and starts with an absolute `--public-url`, the field is `{public-url}/assets/{sha256}{ext}` so a host can embed the image as Markdown instead of transferring image bytes. It is an empty string when `--public-url` is not an HTTP(S) URL. Note that `/assets/` is public: anyone with the URL can open it.
+This fork adds a `public_url` field to `express` and `sticker_library` (`get`) responses. When the deployment serves hashed asset files at `/assets/` and starts with an absolute `--public-url`, the field is `{public-url}/assets/{sha256}{ext}` so a host can embed the image as Markdown instead of transferring image bytes. It is an empty string when `--public-url` is not an HTTP(S) URL. Serve only the hashed files with extensions, e.g. `location ~* "^/assets/[0-9a-f]{64}\\.(png|jpe?g|webp|gif)$" { root /path/to/sticker-data; }` — a blanket `/assets/` static prefix breaks the manager's own `/assets/<id>` preview route. Note that `/assets/` is public: anyone with the URL can open it.
 
 ## 数据与隐私
 
