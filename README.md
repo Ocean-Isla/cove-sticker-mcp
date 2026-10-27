@@ -8,6 +8,28 @@
 
 当前是最小可用开发版，支持从 GitHub 源码安装，尚未上传 PyPI 或创建 Release。MCP SDK 固定为 `2.0.0`；stdio 和 Streamable HTTP 共用同一服务层。宿主是否把 `ImageContent` 显示成聊天气泡、是否能把图片发送到外部平台，由宿主决定。
 
+## 本分支的改动：public_url
+
+这个 fork（Ocean-Isla/cove-sticker-mcp）在 `express` 和 `sticker_library`（`operation=get`）的返回里多给一个 `public_url` 字段，值是这张图能公开打开的地址。宿主拿到它就可以在自己的消息里嵌 Markdown 图片（`![说明](public_url)`），不必把图片字节塞进上下文，也就不会为每次表情消耗图像 token。
+
+生效有两个条件：
+
+1. 部署时把数据目录下的 `assets/` 以 `/assets/` 对外提供静态文件。nginx 示例：
+
+```nginx
+location ^~ /assets/ {
+    alias /path/to/sticker-data/assets/;
+    expires 7d;
+    add_header Cache-Control "public";
+}
+```
+
+2. 启动参数 `--public-url` 要写成这个站点的公网根地址，例如 `https://sticker.example.com`。`public_url` 就是 `{public-url}/assets/{sha256}{ext}`，图片按内容哈希命名，新导入的图自动拥有地址。
+
+`--public-url` 不是 `http(s)` 时，该字段返回空字符串，未改动的宿主可以忽略它。设 `include_image=false` 时只返回元数据与 `public_url`，适合只想嵌入小图、不想付视觉费用的场景。
+
+注意：`/assets/` 是公开静态目录，谁拿到地址都能打开，别往这个图库里放不适合公开的图。
+
 ## 安装
 
 需要 Python 3.11 或更新版本。普通使用可以直接从 GitHub 安装，不需要安装 dev extras：
@@ -18,7 +40,7 @@ python -m venv .venv
 .venv/bin/cove-sticker-mcp --help
 ```
 
-Windows 可将 `.venv/bin/python` 换成 `.venv\Scripts\python.exe`，命令程序位于 `.venv\Scripts`。激活虚拟环境后可直接使用 `cove-sticker-mcp`；旧命令名 `sticker-mcp` 也保留兼容。以下示例使用该兼容命令，需先激活虚拟环境，或填写它的完整路径。
+Windows 可将 `.venv/bin/python` 换成 `.venv\\Scripts\\python.exe`，命令程序位于 `.venv\\Scripts`。激活虚拟环境后可直接使用 `cove-sticker-mcp`；旧命令名 `sticker-mcp` 也保留兼容。以下示例使用该兼容命令，需先激活虚拟环境，或填写它的完整路径。
 
 从源码开发和运行测试时才安装开发依赖：
 
@@ -84,7 +106,7 @@ STICKER_MCP_BEARER_TOKEN='change-me' sticker-mcp serve-http --host 0.0.0.0 \
 
 `express` 接收 `intent`、可选 `context`、`session_id`、`turn`、`turns_since`、`recent_ids` 和 `include_image`，返回图片或 `do_not_send`。`sticker_library` 的 `operation` 为 `search`、`get`、`feedback`、`status`、`manage`。返回的描述和标签是用户图库元数据，agent 应将其视为不可信内容。
 
-完整 HTTP/UI 合同见 [`docs/api.md`](docs/api.md)。MCP 默认返回最长 768 像素的 JPEG 预览，减少把 10 MiB 原图塞进上下文；宿主仍可能按图像内容计费。`include_image=false` 可只取元数据。
+完整 HTTP/UI 合同见 [`docs/api.md`](docs/api.md)。MCP 默认返回最长 768 像素的 JPEG 预览，减少把 10 MiB 原图塞进上下文；宿主仍可能按图像内容计费。`include_image=false` 可只取元数据，同时仍会给出 `public_url`（本分支新增），适合只要地址不要图的场合。
 
 ## 备份和恢复
 
@@ -99,6 +121,10 @@ python -m pip install "git+https://github.com/moonlin1213/cove-sticker-mcp.git@m
 ```
 
 For a standard MCP client, configure `mcpServers` with `command: "/absolute/path/to/.venv/bin/sticker-mcp"` and `args: ["serve"]`; set `STICKER_MCP_DATA_DIR` in `env` when a portable data directory is needed. Only one stdio process may write a data directory. Use one Streamable HTTP instance for multiple agents, or separate data directories. Vision providers are opt-in and require explicit local configuration; no secret is logged, exported, returned to an agent, or bundled in wheels. The built-in protocol presets are MiniMax-compatible, OpenAI Chat Completions-compatible, and Anthropic Messages-compatible. You may provide a display name, full model ID, and an exact endpoint URL; the endpoint must be an absolute HTTP(S) URL without credentials, query, or fragment. The model must support image input. Use the UI to configure providers and test tagging explicitly. Backups are limited to 1999 images and a 100 MiB ZIP budget. This is a development version; PyPI and GitHub Releases are not published yet.
+
+### Fork addition: public_url
+
+This fork adds a `public_url` field to `express` and `sticker_library` (`get`) responses. When the deployment serves the data directory's `assets/` folder at `/assets/` and starts with an absolute `--public-url`, the field is `{public-url}/assets/{sha256}{ext}` so a host can embed the image as Markdown instead of transferring image bytes. It is an empty string when `--public-url` is not an HTTP(S) URL. Note that `/assets/` is public: anyone with the URL can open it.
 
 ## 数据与隐私
 
