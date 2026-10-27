@@ -42,6 +42,15 @@ def _image_content(library: StickerLibrary, sticker_id: str) -> tuple[ImageConte
     return image, mime
 
 
+def _public_asset_url(sticker: Any, management_url: str) -> str:
+    """Build the public URL of a sticker asset when the deployment serves /assets/."""
+    base = (management_url or "").rstrip("/")
+    if not base.startswith(("http://", "https://")):
+        return ""
+    ext = str(sticker.metadata().get("extension") or "")
+    return f"{base}/assets/{sticker.id}{ext}"
+
+
 def create_server(library: StickerLibrary, *, management_url: str = "http://127.0.0.1:8765/") -> MCPServer:
     server = MCPServer("sticker-mcp")
 
@@ -68,7 +77,7 @@ def create_server(library: StickerLibrary, *, management_url: str = "http://127.
             return _result({"do_not_send": True, "reason": "no suitable sticker or frequency policy blocked it"})
         sticker = choices[0]
         payload = {"do_not_send": False, "sticker_id": sticker.id, "original_mime_type": sticker.mime_type,
-                   "asset_uri": f"sticker://{sticker.id}", "metadata": sticker.metadata(),
+                   "asset_uri": f"sticker://{sticker.id}", "public_url": _public_asset_url(sticker, management_url), "metadata": sticker.metadata(),
                    "note": "Selection only; the host decides whether and how to send it."}
         if not include_image:
             return _result(payload)
@@ -96,7 +105,7 @@ def create_server(library: StickerLibrary, *, management_url: str = "http://127.
                 return _result({"items": items, "total": result.total, "page": result.page, "page_size": result.page_size})
             if operation == "get":
                 sticker = library.agent_get(sticker_id)
-                payload = {"sticker_id": sticker.id, "original_mime_type": sticker.mime_type, "asset_uri": f"sticker://{sticker.id}", "metadata": sticker.metadata()}
+                payload = {"sticker_id": sticker.id, "original_mime_type": sticker.mime_type, "asset_uri": f"sticker://{sticker.id}", "public_url": _public_asset_url(sticker, management_url), "metadata": sticker.metadata()}
                 if not include_image:
                     return _result(payload)
                 image, preview_mime = _image_content(library, sticker.id)
